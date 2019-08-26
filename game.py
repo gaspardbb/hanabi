@@ -202,7 +202,6 @@ class Card:
 
 
 class Hand:
-
     cards: List[Card]
 
     def __init__(self, player_id):
@@ -215,17 +214,32 @@ class Hand:
             check_iscard(card)
             self.cards.append(card)
 
+    def remove_card(self, card):
+        if isinstance(card, Card):
+            self.cards.remove(card)
+        elif isinstance(card, int):
+            self.cards.remove(self.cards[card])
+        else:
+            raise ValueError("You need to pass an index (int) or a card (Card). Got: %s." % type(card))
+
     def __repr__(self):
         return " ".join([str(card) + " " for card in self.cards])
 
+
 class Game:
     """
-    This is the class which manages everything which happens in the area of the game. In the end, it should have
-    multiple array;
-    . All the cards which were discarded or played
-    . All the cards in each player's hands
-    . = All the cards which remain in the deck
-    This class should know everything.
+    This is the class which manages everything which happens in the area of the game. This class should know everything.
+
+    Attributes name:
+
+    * **deck**: keeps track of every card still in the deck.
+    * **states**: list of array. Each array is specific to a player, and represent the game as this player sees it. It means that if player 1 and 2 have all the blue cards in their hand, the state for player 0 will have the first row set to 0. E.g:
+            [[ 0, 0, 0, 0, 0],
+             [ *, ...
+    * **players**: list of Hand. Each hand has a player id, and of course a list of cards. The player id enable to see the game as it is seen from the Hand's perspective, through the *states* array previously mentioned.
+    * **stacks**: the stack of colors on the table, starting at 0.
+    * **score**: the current score of the game = sum of the stacks
+    * **penalty**: the number of badly played cards.
     """
 
     # this variable contains every cards out of the deck, to make sure we're not playing the same card twice.
@@ -238,6 +252,12 @@ class Game:
     states = []
     # thus, at all time, we should have states >= deck
     players: List[Hand] = []
+
+    # the stacks of cards. One for each color, starting at 0.
+    stacks = [0] * 5
+
+    score = 0
+    penalty = 0
 
     @staticmethod
     def deal_card(card):
@@ -274,6 +294,13 @@ class Game:
 
     @staticmethod
     def deal_hand(player_id, n=5):
+        """
+        Deal n cards to player_id.
+
+        Args:
+            player_id: a valid player id.
+            n: the number of cards to deal.
+        """
         check_isin(player_id, (0, len(Game.players)))
         for i in range(n):
             card = Game.random_card(player_id=player_id)
@@ -289,10 +316,68 @@ class Game:
 
     @staticmethod
     def random_card(player_id: int):
+        """
+        Take a card at random from the ones remaining in the deck.
+
+        Args:
+            player_id: the player to give the card to.
+
+        Returns:
+            a Card.
+
+        Raises:
+            ValueError: if there are no more cards in the deck.
+        """
+        if np.sum(Game.deck == 0):
+            raise ValueError("There are no more cards in the deck!")
         probabilities = Game.deck / np.sum(Game.deck)
         sample = np.random.choice(probabilities.size, size=1, p=probabilities.flatten())
         sample = int(sample)
         return Card(color=sample // 5, value=sample % 5, hand=Game.players[player_id])
+
+    @staticmethod
+    def play_card(player_id: int, card: int or Card):
+        """
+        When a player plays one of its cards.
+
+        Args:
+            player_id: the player playing the card.
+            card: the position of the card.
+
+        Multiple things must be done:
+            1. Put the card off the player's hand
+            2. Update the states of the hand, because it now sees its card.
+            3. Give a penalty or increase the score and put the card on the stack
+        """
+        check_isin(player_id, (0, len(Game.players)))
+
+        # We put the card off the player's hand.
+        Game.players[player_id].remove_card(card)
+
+        # Updating state of player.
+        Game.states[player_id][card.color, card.value] -= 1
+
+        # Checking the stacks
+        if Game.stacks[card.color] == card.value:
+            Game.stacks[card.color] += 1
+            Game.score += 1
+            print("This card %s was well played!" % card)
+        else:
+            Game.penalty += 1
+            print("This card %s could not fit on the stack for color %s, which was expecting %s." %
+                  (card, card.color, Game.stacks[card.color]))
+
+    @staticmethod
+    def give_information(player_id: int, info: Information):
+        """
+
+        Args:
+            player_id:
+            info:
+
+        DO NOT FORGET TO GIVE THE COMPLEMENTARY INFORMATION TO EVERY OTHER CARDS !!
+        """
+        pass
 
 
 if __name__ == '__main__':
