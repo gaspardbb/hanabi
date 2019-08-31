@@ -33,7 +33,13 @@ class FractionMatrix(np.ndarray):
         raise NotImplementedError
 
     def make_proba(self):
+        # I should check the complexity of this operation
+        # And actually, we can set the denominator to the size of the deck
         self.denominator = int(np.sum(self))
+        gcd = np.gcd.reduce(self.flatten())
+        self.__ifloordiv__(gcd)
+        self.denominator = self.denominator // gcd
+
 
     def is_proba(self):
         return int(np.sum(self)) == self.denominator
@@ -451,15 +457,25 @@ if __name__ == '__main__':
 
     Game.add_player()
     Game.add_player()
-    Game.deal_hand(0, n=1, game_start=True)
-    Game.deal_hand(1, n=1, game_start=True)
+    Game.deal_card(Card(0, 0, Game.players[0]))
+    Game.deal_card(Card(0, 0, Game.players[0]))
+    Game.deal_card(Card(0, 0, Game.players[0]))
+    Game.deal_card(Card(4, 4, Game.players[1]))
     Game.players[0].cards[0].add_information(Information("color", Game.players[0].cards[0].color, False))
-    # Game.players[0].cards[1].add_information(Information("color", Game.players[0].cards[0].color, True))
-    Game.deal_hand(0, n=1)
+    Game.players[0].cards[1].add_information(Information("color", Game.players[0].cards[1].color, False))
+    Game.players[0].cards[2].add_information(Information("color", Game.players[0].cards[2].color, False))
+    Game.players[0].cards[0].add_information(Information("value", Game.players[0].cards[0].value, False))
+    Game.players[0].cards[1].add_information(Information("value", Game.players[0].cards[1].value, False))
+    Game.players[0].cards[2].add_information(Information("value", Game.players[0].cards[2].value, False))
+    Game.deal_card(Card(0, 1, Game.players[0]))
+
+    # Game.deal_hand(0, n=1, game_start=True)
+    # Game.deal_hand(1, n=1, game_start=True)
+    # Game.deal_hand(0, n=1)
     print("Player 0 : \n%s" % Game.players[0])
     print("Player 1 : \n%s" % Game.players[1])
     print("State  0 : \n%s" % Game.states[0])
     print("State  1 : \n%s" % Game.states[1])
     print("Deck : \n%s" % Game.deck)
-    print("Proba. for last card of player 0 : \n%s, %s" % (Game.players[0].cards[-1].probabilities(), Game.players[
-        0].cards[-1].probabilities().denominator))
+    probabilities = Game.players[0].cards[-1].probabilities()
+    print("Proba. for last card of player 0 : \n%s, %s" % (probabilities, probabilities.denominator))
