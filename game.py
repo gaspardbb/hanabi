@@ -1,12 +1,49 @@
 from typing import List
+import fractions
 
 import numpy as np
+
+class FractionMatrix(np.ndarray):
+
+    def __new__(cls, input_array, denominator: int):
+        obj = np.asarray(input_array).view(cls)
+        obj.denominator = denominator
+        return obj
+
+    def __array_finalize__(self, obj):
+        if obj is None: return
+        self.denominator = getattr(obj, 'denominator', 1)
+
+    def __sub__(self, other):
+        common_multiple = np.lcm(self.denominator, other.denominator)
+        self_array = self.view(np.ndarray) * (common_multiple // self.denominator)
+        other_array = other.view(np.ndarray) * (common_multiple // other.denominator)
+        return FractionMatrix(self_array - other_array, common_multiple)
+
+    def __add__(self, other):
+        common_multiple = np.lcm(self.denominator, other.denominator)
+        self_array = self.view(np.ndarray) * (common_multiple // self.denominator)
+        other_array = other.view(np.ndarray) * (common_multiple // other.denominator)
+        return FractionMatrix(self_array + other_array, common_multiple)
+
+    def __mul__(self, other):
+        raise NotImplementedError
+
+    def __truediv__(self, other):
+        raise NotImplementedError
+
+    def make_proba(self):
+        self.denominator = int(np.sum(self))
+
+    def is_proba(self):
+        return int(np.sum(self)) == self.denominator
+
 
 INIT_ARRAY = np.array([[3, 2, 2, 2, 1],
                        [3, 2, 2, 2, 1],
                        [3, 2, 2, 2, 1],
                        [3, 2, 2, 2, 1],
-                       [3, 2, 2, 2, 1]], dtype='int8')
+                       [3, 2, 2, 2, 1]], dtype='int32')
 
 
 def check_isin(value, boundaries):
@@ -93,21 +130,32 @@ class Card:
     COLOR = ["B", "W", "R", "Y", "G"]
 
     def __init__(self, color: int, value: int, hand):
+        """
+        Create a new card.
+
+        Args:
+            color: the color of the card
+            value: the value of the card
+            hand: the hand to which this card belong
+            decreasing order of seniority. Otherwise, infinite loop may occur when computing probabilities.
+        """
         check_isin(color, (0, 4))
         check_isin(value, (0, 4))
         check_ishand(hand)
 
+        self.cards_in_hand = []
         self.hand = hand
         self.player_id = hand.id
         self.color = color
         self.value = value
-        self.information = np.ones((5, 5), dtype='bool')
+        self.played = False
+        self.states = np.ones((5, 5), dtype='bool')
 
     def __getitem__(self, item):
-        return self.information[item]
+        return self.states[item]
 
     def __setitem__(self, key, value):
-        self.information[key] = value
+        self.states[key] = value
 
     def __repr__(self):
         return "%s%s" % (Card.COLOR[self.color], self.value)
@@ -134,23 +182,34 @@ class Card:
                 self[:, :info.data] = 0
                 self[:, info.data + 1:] = 0
 
-    def probabilities(self, rational=False):
+    def probabilities(self, return_denominator=False):
         """
         Get the probability of having each card in the game.
 
-        Args:
-            rational: if True, returns a tuple of (int array, int). Otherwise, returns the ratio of these two
-            quantities as a float array.
-
         Returns:
             A numpy array.
+
+        There are a few things to do in a precise order.
+        First, get the state of the game from the Hand's perspective.
+        Then, take each card which were present when this card was added to the hand; if it has not been played
+        yet (ie, it is still in the hand) compute their probabilities; sub it from the state.
+        Finally, apply every information.
+
+        I was sure of this implementation when dealing with float arrays. With the FractionMatrix class, I must admit
+        I'm not so sure if the probabilities are well computed. I must check that.
+        TODO: check implementation with fractions.
         """
-        state = self.information * Game.states[self.player_id]
-        total = np.sum(state)
-        if rational:
-            return state, total
+        probability_matrix = Game.states[self.player_id].copy().view(FractionMatrix)
+
+        for card in self.cards_in_hand:
+            if not card.played:
+                probability_matrix = probability_matrix - card.probabilities()
+        probability_matrix = self.states * probability_matrix
+        probability_matrix.make_proba()
+        if return_denominator:
+            return probability_matrix, probability_matrix.denominator
         else:
-            return state / total
+            return probability_matrix
 
     def determined(self):
         """
@@ -159,7 +218,7 @@ class Card:
         Returns:
             A boolean.
         """
-        probabilities, _ = self.probabilities(rational=True)
+        probabilities, _ = self.probabilities()
         n_possible = np.where(probabilities != 0)[0].size
         assert n_possible != 0
         if n_possible == 1:
@@ -175,7 +234,7 @@ class Card:
             A boolean. True if it has been determined and the color and value predicted match. False otherwise.
         """
         if self.determined():
-            index_predicted = np.argwhere(self.information == 1)[0]
+            index_predicted = np.argwhere(self.states == 1)[0]
             if index_predicted[0] == self.color and index_predicted[1] == self.value:
                 return True
         return False
@@ -191,7 +250,7 @@ class Card:
         Returns:
             A tuple (if return_proba) or a (tuple, float).
         """
-        probabilities, total = self.probabilities(rational=True)
+        probabilities, total = self.probabilities()
         max_probas = np.max(probabilities)
         arg_probas = np.argwhere(probabilities == max_probas)
 
@@ -208,11 +267,12 @@ class Hand:
         self.id = player_id
         self.cards = []
 
-    def add_cards(self, cards):
-        cards = make_iterable(cards)
-        for card in cards:
-            check_iscard(card)
-            self.cards.append(card)
+    def add_card(self, card: Card, game_start=False):
+        check_iscard(card)
+        if not game_start:
+            for card_hand in self.cards:
+                card.cards_in_hand.append(card_hand)
+        self.cards.append(card)
 
     def remove_card(self, card):
         if isinstance(card, Card):
@@ -249,7 +309,7 @@ class Game:
     #            - every cards played
     #            - every cards discarded
     #            - every cards on the other players' hand.
-    states = []
+    states: List[np.ndarray] = []
     # thus, at all time, we should have states >= deck
     players: List[Hand] = []
 
@@ -260,7 +320,7 @@ class Game:
     penalty = 0
 
     @staticmethod
-    def deal_card(card):
+    def deal_card(card, game_start=False):
         """
         Function to give a card to a player. It's the only way a card is moving out of the deck.
 
@@ -282,18 +342,22 @@ class Game:
 
         # We put it out of the deck
         Game.deck[card.color, card.value] -= 1
+        # For now, I have to lower the denominator myself... Maybe I can find a better way to do that.
+        # Game.deck.denominator -= 1
 
         # We make the other player aware of that
         for i in range(len(Game.states)):
             if i != player_id:
                 Game.states[i][card.color, card.value] -= 1
+                # Game.states[i].denominator -= 1
 
-        # It it the only way a card is moving out of the deck. So we must always have Game.states >= Game.deck
+        # It it the only way a card is moving out of the deck. So we must always have Game.states >= Game.deck.
+        # Actually, we have Game.deck = min(Game.states), element-wise.
         # Finally, we add it to the proper player's hand.
-        Game.players[player_id].add_cards(card)
+        Game.players[player_id].add_card(card, game_start=game_start)
 
     @staticmethod
-    def deal_hand(player_id, n=5):
+    def deal_hand(player_id, n=5, game_start=False):
         """
         Deal n cards to player_id.
 
@@ -304,7 +368,7 @@ class Game:
         check_isin(player_id, (0, len(Game.players)))
         for i in range(n):
             card = Game.random_card(player_id=player_id)
-            Game.deal_card(card)
+            Game.deal_card(card, game_start=game_start)
 
     @staticmethod
     def add_player():
@@ -328,9 +392,9 @@ class Game:
         Raises:
             ValueError: if there are no more cards in the deck.
         """
-        if np.sum(Game.deck == 0):
+        if np.sum(Game.deck) == 0:
             raise ValueError("There are no more cards in the deck!")
-        probabilities = Game.deck / np.sum(Game.deck)
+        probabilities = Game.deck.view(np.ndarray) / np.sum(Game.deck)
         sample = np.random.choice(probabilities.size, size=1, p=probabilities.flatten())
         sample = int(sample)
         return Card(color=sample // 5, value=sample % 5, hand=Game.players[player_id])
@@ -352,6 +416,7 @@ class Game:
         check_isin(player_id, (0, len(Game.players)))
 
         # We put the card off the player's hand.
+        card.played = True
         Game.players[player_id].remove_card(card)
 
         # Updating state of player.
@@ -381,14 +446,20 @@ class Game:
 
 
 if __name__ == '__main__':
+    import fractions
+    np.set_printoptions(formatter={'all': lambda x: str(fractions.Fraction(x).limit_denominator())})
+
     Game.add_player()
     Game.add_player()
-    Game.deal_hand(0, n=5)
-    Game.deal_hand(1, n=5)
-    # Game.players[0].cards[0].add_information(Information("color", Game.players[0].cards[0].color, False))
+    Game.deal_hand(0, n=1, game_start=True)
+    Game.deal_hand(1, n=1, game_start=True)
+    Game.players[0].cards[0].add_information(Information("color", Game.players[0].cards[0].color, False))
+    # Game.players[0].cards[1].add_information(Information("color", Game.players[0].cards[0].color, True))
+    Game.deal_hand(0, n=1)
     print("Player 0 : \n%s" % Game.players[0])
     print("Player 1 : \n%s" % Game.players[1])
     print("State  0 : \n%s" % Game.states[0])
     print("State  1 : \n%s" % Game.states[1])
     print("Deck : \n%s" % Game.deck)
-    print("Proba. for first card of player 0 : \n%s / %s" % Game.players[0].cards[0].probabilities(rational=True))
+    print("Proba. for last card of player 0 : \n%s, %s" % (Game.players[0].cards[-1].probabilities(), Game.players[
+        0].cards[-1].probabilities().denominator))
