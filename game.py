@@ -1,8 +1,8 @@
-from typing import List
+from typing import List, Iterable
 
 import numpy as np
 
-from utils import FractionMatrix, check_isin, check_iscard, check_ishand
+from utils import FractionMatrix, check_isin, make_iterable
 
 INIT_ARRAY = np.array([[3, 2, 2, 2, 1],
                        [3, 2, 2, 2, 1],
@@ -14,6 +14,8 @@ INIT_ARRAY = np.array([[3, 2, 2, 2, 1],
 class Information:
 
     def __init__(self, info_type: str, data: int, negative: bool):
+        check_isin(data, (0, 4))
+
         if info_type == "color":
             self.type = info_type
             self.is_color = True
@@ -25,13 +27,18 @@ class Information:
         else:
             raise ValueError("Type of information must be `color` or `value`. Got: %s." % info_type)
 
-        check_isin(data, (0, 4))
         self.data = data
         self.negative = negative
 
+    def negate(self):
+        """Return the negative information."""
+        return Information(self.type, self.data, not self.negative)
+
 
 class Card:
-    COLOR = ["B", "W", "R", "Y", "G"]
+    COLOR = ["B", "W", "R", "Y", "G", "?"]
+    VALUE = [1, 2, 3, 4, 5, "?"]
+    UNK = 5  # Unknown index
 
     def __init__(self, color: int, value: int, hand):
         """
@@ -43,8 +50,8 @@ class Card:
             hand: the hand to which this card belong
             decreasing order of seniority. Otherwise, infinite loop may occur when computing probabilities.
         """
-        check_isin(color, (0, 4))
-        check_isin(value, (0, 4))
+        check_isin(color, (0, Card.UNK))
+        check_isin(value, (0, Card.UNK))
         check_ishand(hand)
 
         self.cards_in_hand = []
@@ -62,7 +69,7 @@ class Card:
         self.states[key] = value
 
     def __repr__(self):
-        return "%s%s" % (Card.COLOR[self.color], self.value)
+        return "%s%s" % (Card.COLOR[self.color], Card.VALUE[self.value])
 
     def add_information(self, info: Information):
         """
@@ -86,7 +93,7 @@ class Card:
                 self[:, :info.data] = 0
                 self[:, info.data + 1:] = 0
 
-    def probabilities(self, return_denominator=False):
+    def probabilities(self, return_denominator=False, player_state=None):
         """
         Get the probability of having each card in the game.
 
@@ -103,11 +110,14 @@ class Card:
         I'm not so sure if the probabilities are well computed. I must check that.
         TODO: check implementation with fractions.
         """
-        probability_matrix = Game.states[self.player_id].copy().view(FractionMatrix)
+        if player_state is None:
+            probability_matrix = Game.states[self.player_id].copy().view(FractionMatrix)
+        else:
+            probability_matrix = player_state.copy().view(FractionMatrix)
 
         for card in self.cards_in_hand:
             if not card.played:
-                probability_matrix = probability_matrix - card.probabilities()
+                probability_matrix = probability_matrix - card.probabilities(player_state=player_state)
         probability_matrix = self.states * probability_matrix
         probability_matrix.make_proba()
         if return_denominator:
@@ -122,7 +132,7 @@ class Card:
         Returns:
             A boolean.
         """
-        probabilities, _ = self.probabilities()
+        probabilities = self.probabilities(return_denominator=False)
         n_possible = np.where(probabilities != 0)[0].size
         assert n_possible != 0
         if n_possible == 1:
@@ -186,8 +196,37 @@ class Hand:
         else:
             raise ValueError("You need to pass an index (int) or a card (Card). Got: %s." % type(card))
 
+    def add_information(self, card_index: int or Iterable[int], info: Information):
+        """
+        Add information on a card or a set of card.
+
+        Args:
+            card_index: the index of the card(s) to give the information to.
+            info: the information.
+        """
+        card_index = make_iterable(card_index)
+        card_index: List[int]
+
+        for idx in card_index:
+            if self.cards[idx].played:
+                raise ValueError("You're giving information on a card which has already been played.")
+            self.cards[idx].add_information(info)
+        for i, card in enumerate(self.cards):
+            if i not in card_index and not card.played:
+                card.add_information(info.negate())
+
     def __repr__(self):
         return " ".join([str(card) + " " for card in self.cards])
+
+    def reorder(self, card_idx, new_idx):
+        """Reorder the hand."""
+        arangement = list(range(self.n_cards))
+        arangement[card_idx], arangement[new_idx] = new_idx, card_idx
+        self.cards = [self.cards[k] for k in arangement]
+
+    @property
+    def n_cards(self):
+        return len(self.cards)
 
 
 class Game:
@@ -337,16 +376,8 @@ class Game:
                   (card, card.color, Game.stacks[card.color]))
 
     @staticmethod
-    def give_information(player_id: int, info: Information):
-        """
-
-        Args:
-            player_id:
-            info:
-
-        DO NOT FORGET TO GIVE THE COMPLEMENTARY INFORMATION TO EVERY OTHER CARDS !!
-        """
-        pass
+    def give_information(player_id: int, card_index, info: Information):
+        Game.players[player_id].add_information(card_index, info)
 
 
 if __name__ == '__main__':
@@ -377,3 +408,31 @@ if __name__ == '__main__':
     print("Deck : \n%s" % Game.deck)
     probabilities = Game.players[0].cards[-1].probabilities()
     print("Proba. for last card of player 0 : \n%s, %s" % (probabilities, probabilities.denominator))
+
+
+def check_iscard(card):
+    """
+    Simple function to check we have a `Card` object.
+
+    Args:
+        card: the card to be tested.
+
+    Raises:
+         ValueError if not instance of `Card`.
+    """
+    if not isinstance(card, Card):
+        raise ValueError("You need to pass a `Card` as a parameter! Got %s." % type(card))
+
+
+def check_ishand(hand):
+    """
+    Simple function to check we have a `Hand` object.
+
+    Args:
+        hand: the hand to be tested.
+
+    Raises:
+         ValueError if not instance of `Hand`.
+    """
+    if not isinstance(hand, Hand) and Hand is not None:
+        raise ValueError("You need to pass a `Hand` as a parameter! Got %s." % type(hand))

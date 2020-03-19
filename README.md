@@ -1,5 +1,53 @@
-# Learning to play Hanabi
+# Hanabi probability
 
+This provides a graphical interface for computing the probability for each card in default settings for Hanabi.
+
+## Examples: 
+
+1. Starting configuration: 
+
+![start](examples/1_start)
+
+2. The 2nd and 3rd cards are red:
+
+![color](examples/2_color_info)
+
+3. Reorder: 
+
+![reorder](examples/3_reorder)
+
+4. 1st, 4th, 5th cards are 2:
+
+![value](examples/4_value)
+
+5. You play the second card. You discover it's a 4, Red: 
+
+![played](examples/5_played)
+
+6. Your teammate takes a 5, Green:
+
+![seen](examples/6_seen)
+
+
+## Manual
+
+Start with: 
+```
+python gui.py
+```
+
+* Each time you see a card in another player's hand, use the "See" row.
+* When you get color or value information, use the next rows, checking the cards which are targeted.
+* The probabilities are displayed below. 
+* When you play a card, use the "play" button below after having precised what was the color and value of this card.
+* If you want to change the position of a card, use the last line. 
+
+## To do
+ 
+* Cancel an action
+* Prettier GUI: I took the most straightforward Tkinter tutorial, so it's pretty ugly.
+
+## Hanabi
 Hanabi is cooperative game: cards are of 5 different colours, with values ranging from 1 to 5. Each player sees everyone's cards but its own. 
 The goal is to put all the play all the cards in the right order. 
 Three actions are possible at each turn: 

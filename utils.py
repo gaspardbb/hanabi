@@ -1,7 +1,5 @@
 import numpy as np
 
-from game import Card, Hand
-
 
 class FractionMatrix(np.ndarray):
 
@@ -40,7 +38,6 @@ class FractionMatrix(np.ndarray):
         self.__ifloordiv__(gcd)
         self.denominator = self.denominator // gcd
 
-
     def is_proba(self):
         return int(np.sum(self)) == self.denominator
 
@@ -63,34 +60,6 @@ def check_isin(value, boundaries):
         raise ValueError("%s is not in the provided boundaries: %s - %s." % (value, boundaries[0], boundaries[1]))
 
 
-def check_iscard(card):
-    """
-    Simple function to check we have a `Card` object.
-
-    Args:
-        card: the card to be tested.
-
-    Raises:
-         ValueError if not instance of `Card`.
-    """
-    if not isinstance(card, Card):
-        raise ValueError("You need to pass a `Card` as a parameter! Got %s." % type(card))
-
-
-def check_ishand(hand):
-    """
-    Simple function to check we have a `Hand` object.
-
-    Args:
-        hand: the hand to be tested.
-
-    Raises:
-         ValueError if not instance of `Hand`.
-    """
-    if not isinstance(hand, Hand):
-        raise ValueError("You need to pass a `Hand` as a parameter! Got %s." % type(hand))
-
-
 def make_iterable(value):
     """
     A simple function to turn any value in a list.
@@ -104,3 +73,22 @@ def make_iterable(value):
     if not (isinstance(value, list) or isinstance(value, tuple)):
         return [value]
     return value
+
+
+def pretty_probability(array: np.ndarray):
+    assert array.shape == (5, 5)
+    colors = ["Bl", "Wh", "Re", "Ye", "Gr"]
+    result = "\t1\t2\t3\t4\t5\n"
+    result += "\n"
+    for i in range(5):
+        result += colors[i]
+        for j in range(5):
+            result += "\t"+str(array[i, j])
+        result += "\n"
+    return result
+    # new_array = np.zeros((6, 6), dtype="object")
+    # new_array[0, 0] = " "
+    # new_array[1:, 0] = ["Bl", "Wh", "Re", "Ye", "Gr"]
+    # new_array[0, 1:] = [1, 2, 3, 4, 5]
+    # new_array[1:, 1:] = array
+    # return new_array.__repr__()
